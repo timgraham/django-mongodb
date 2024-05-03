@@ -7,6 +7,7 @@ from django.db import (
     connections,
 )
 from django.db.models import NOT_PROVIDED, Count, Expression
+from django.db.models.aggregates import Aggregate
 from django.db.models.constants import LOOKUP_SEP
 from django.db.models.sql import compiler
 from django.db.models.sql.constants import GET_ITERATOR_CHUNK_SIZE, MULTI
@@ -103,6 +104,8 @@ class SQLCompiler(compiler.SQLCompiler):
             raise NotSupportedError("QuerySet.select_related() is not supported on MongoDB.")
         if len([a for a in self.query.alias_map if self.query.alias_refcount[a]]) > 1:
             raise NotSupportedError("Queries with multiple tables are not supported on MongoDB.")
+        if any(isinstance(annon, Aggregate) for annon in self.query.annotations.values()):
+            raise NotSupportedError("Aggregation queries are not supported on MongoDB.")
 
     def get_count(self, check_exists=False):
         """
