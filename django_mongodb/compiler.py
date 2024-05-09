@@ -214,6 +214,7 @@ class SQLInsertCompiler(SQLCompiler):
         """Store a document using field columns as element names."""
         collection = self.get_collection()
         options = self.connection.operation_flags.get("save", {})
+        options['session'] = self.connection.session
         inserted_id = collection.insert_one(doc, **options).inserted_id
         return [inserted_id] if returning_fields else []
 

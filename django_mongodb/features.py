@@ -6,7 +6,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     # Not implemented: https://github.com/mongodb-labs/django-mongodb/issues/8
     supports_json_field = False
     # Not implemented: https://github.com/mongodb-labs/django-mongodb/issues/7
-    supports_transactions = False
+    supports_transactions = True
     uses_savepoints = False
 
     django_test_expected_failures = {

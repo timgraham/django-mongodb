@@ -64,6 +64,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         super().__init__(*args, **kwargs)
         self.connected = False
         del self.connection
+        self.session = None
 
     def get_collection(self, name, **kwargs):
         return Collection(self.database, name, **kwargs)
@@ -103,19 +104,27 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             raise ImproperlyConfigured("Invalid username or password.")
 
         self.connected = True
+        self.set_autocommit(self.settings_dict["AUTOCOMMIT"])
         connection_created.send(sender=self.__class__, connection=self)
 
+    def _start_transaction_under_autocommit(self):
+        self.session = self.connection.start_session()
+        self.session.start_transaction()
+
     def _commit(self):
-        pass
+        self.session.commit_transaction()
 
     def _rollback(self):
-        pass
+        self.session.abort_transaction()
 
     def close(self):
         if self.connected:
             del self.connection
             del self.database
             self.connected = False
+
+    def _set_autocommit(self, autocommit):
+        pass
 
     def cursor(self):
         return Cursor()
