@@ -62,6 +62,7 @@ jobs:
           dates
           datetimes
           db_functions
+          dbshell1
           delete
           delete_regress
           empty
