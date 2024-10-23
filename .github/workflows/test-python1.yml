@@ -55,6 +55,7 @@ jobs:
           admin_ordering
           admin_scripts
           admin_utils
+          admin_views
           admin_widgets
           apps
           async

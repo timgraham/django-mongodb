@@ -252,6 +252,11 @@ class DatabaseFeatures(BaseDatabaseFeatures):
             "update.tests.AdvancedTests.test_update_ordered_by_m2m_annotation_desc",
         },
         "QuerySet.dates() is not supported on MongoDB.": {
+            "admin_views.tests.AdminViewBasicTest.test_change_list_sorting_override_model_admin",
+            "admin_views.tests.AdminViewBasicTest.test_multiple_sort_same_field",
+            "admin_views.tests.AdminViewListEditable.test_inheritance",
+            "admin_views.tests.CSSTest.test_changelist_field_classes",
+            "admin_views.tests.DateHierarchyTests",
             "aggregation.tests.AggregateTestCase.test_dates_with_aggregation",
             "annotations.tests.AliasTests.test_dates_alias",
             "aggregation_regress.tests.AggregationTests.test_more_more_more2",
@@ -294,6 +299,11 @@ class DatabaseFeatures(BaseDatabaseFeatures):
             "queryset_pickle.tests.PickleabilityTestCase.test_specialized_queryset",
         },
         "QuerySet.datetimes() is not supported on MongoDB.": {
+            "admin_views.test_templatetags.DateHierarchyTests",
+            "admin_views.test_templatetags.AdminTemplateTagsTest.test_override_change_list_template_tags",
+            "admin_views.tests.AdminViewBasicTest.test_date_hierarchy_empty_queryset",
+            "admin_views.tests.AdminViewBasicTest.test_date_hierarchy_local_date_differ_from_utc",
+            "admin_views.tests.AdminViewBasicTest.test_date_hierarchy_timezone_dst",
             "annotations.tests.AliasTests.test_datetimes_alias",
             "datetimes.tests.DateTimesTests.test_21432",
             "datetimes.tests.DateTimesTests.test_datetimes_has_lazy_iterator",
