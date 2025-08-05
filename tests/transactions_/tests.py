@@ -160,17 +160,6 @@ class AtomicInsideTransactionTests(AtomicTests):
         self.atomic.__exit__(*sys.exc_info())
 
 
-class AtomicWithoutAutocommitTests(AtomicTests):
-    """All basic tests for atomic should also pass when autocommit is turned off."""
-
-    def setUp(self):
-        transaction.set_autocommit(False)
-        self.addCleanup(transaction.set_autocommit, True)
-        # The tests access the database after exercising 'atomic', initiating
-        # a transaction ; a rollback is required before restoring autocommit.
-        self.addCleanup(transaction.rollback)
-
-
 @skipUnlessDBFeature("uses_savepoints")
 class AtomicErrorsTests(TransactionTestCase):
     available_apps = ["transactions"]

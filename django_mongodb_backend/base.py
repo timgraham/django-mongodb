@@ -5,6 +5,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import DEFAULT_DB_ALIAS
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.backends.utils import debug_transaction
+from django.db.transaction import TransactionManagementError
 from django.utils.asyncio import async_unsafe
 from django.utils.functional import cached_property
 from pymongo.collection import Collection
@@ -159,6 +160,26 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         super().__init__(settings_dict, alias=alias)
         self.session = None
 
+        # Transaction related attributes.
+        # Tracks if the connection is in autocommit mode. Per PEP 249, by
+        # default, it isn't.
+        self.autocommit_mongo = False
+        # Tracks if the connection is in a transaction managed by 'atomic'.
+        self.in_atomic_block_mongo = False
+        # Increment to generate unique savepoint ids.
+        self.savepoint_state = 0
+        # List of savepoints created by 'atomic'.
+        self.savepoint_ids = []
+        # Stack of active 'atomic' blocks.
+        self.atomic_blocks_mongo = []
+        # Tracks if the outermost 'atomic' block should commit on exit,
+        # ie. if autocommit was active on entry.
+        self.commit_on_exit_mongo = True
+        # Tracks if the transaction should be rolled back to the next
+        # available savepoint because of an exception in an inner block.
+        self.needs_rollback_mongo = False
+        self.rollback_exc_mongo = None
+
     def get_collection(self, name, **kwargs):
         collection = Collection(self.database, name, **kwargs)
         if self.queries_logged:
@@ -250,7 +271,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     @requires_transaction_support
     def validate_no_broken_transaction(self):
-        super().validate_no_broken_transaction()
+        if self.needs_rollback_mongo:
+            raise TransactionManagementError(
+                "An error occurred in the current transaction. You can't "
+                "execute queries until the end of the 'atomic' block."
+            ) from self.rollback_exc
 
     def get_database_version(self):
         """Return a tuple of the database's version."""

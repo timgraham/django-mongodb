@@ -1,80 +1,11 @@
-from contextlib import ContextDecorator, contextmanager
+from contextlib import ContextDecorator
 
 from django.db import (
     DEFAULT_DB_ALIAS,
     DatabaseError,
     Error,
-    ProgrammingError,
-    connections,
 )
-
-
-class TransactionManagementError(ProgrammingError):
-    """Transaction management is used improperly."""
-
-
-def get_connection(using=None):
-    """
-    Get a database connection by name, or the default database connection
-    if no name is provided. This is a private API.
-    """
-    if using is None:
-        using = DEFAULT_DB_ALIAS
-    return connections[using]
-
-
-def commit(using=None):
-    """Commit a transaction."""
-    get_connection(using).commit()
-
-
-def rollback(using=None):
-    """Roll back a transaction."""
-    get_connection(using).rollback()
-
-
-def set_rollback(rollback, using=None):
-    """
-    Set or unset the "needs rollback" flag -- for *advanced use* only.
-
-    When `rollback` is `True`, trigger a rollback when exiting the innermost
-    enclosing atomic block that has `savepoint=True` (that's the default). Use
-    this to force a rollback without raising an exception.
-
-    When `rollback` is `False`, prevent such a rollback. Use this only after
-    rolling back to a known-good state! Otherwise, you break the atomic block
-    and data corruption may occur.
-    """
-    return get_connection(using).set_rollback(rollback)
-
-
-@contextmanager
-def mark_for_rollback_on_error(using=None):
-    """
-    Internal low-level utility to mark a transaction as "needs rollback" when
-    an exception is raised while not enforcing the enclosed block to be in a
-    transaction. This is needed by Model.save() and friends to avoid starting a
-    transaction when in autocommit mode and a single query is executed.
-
-    It's equivalent to:
-
-        connection = get_connection(using)
-        if connection.get_autocommit():
-            yield
-        else:
-            with transaction.atomic(using=using, savepoint=False):
-                yield
-
-    but it uses low-level utilities to avoid performance overhead.
-    """
-    try:
-        yield
-    except Exception as exc:
-        connection = get_connection(using)
-        if connection.in_atomic_block:
-            connection.needs_rollback = True
-            connection.rollback_exc = exc
-        raise
+from django.db.transaction import get_connection
 
 
 def on_commit(func, using=None, robust=False):
@@ -125,42 +56,38 @@ class Atomic(ContextDecorator):
     def __enter__(self):
         connection = get_connection(self.using)
 
-        if (
-            self.durable
-            and connection.atomic_blocks
-            and not connection.atomic_blocks[-1]._from_testcase
-        ):
+        if self.durable and connection.atomic_blocks_mongo:
             raise RuntimeError(
                 "A durable atomic block cannot be nested within another atomic block."
             )
-        if not connection.in_atomic_block:
+        if not connection.in_atomic_block_mongo:
             # Reset state when entering an outermost atomic block.
-            connection.commit_on_exit = True
-            connection.needs_rollback = False
-            if not connection.get_autocommit():
-                # Pretend we're already in an atomic block to bypass the code
-                # that disables autocommit to enter a transaction, and make a
-                # note to deal with this case in __exit__.
-                connection.in_atomic_block = True
-                connection.commit_on_exit = False
+            connection.commit_on_exit_mongo = True
+            connection.needs_rollback_mongo = False
+            #            if not connection.get_autocommit():
+            # Pretend we're already in an atomic block to bypass the code
+            # that disables autocommit to enter a transaction, and make a
+            # note to deal with this case in __exit__.
+            connection.in_atomic_block_mongo = True
+            connection.commit_on_exit = False
 
-        if connection.in_atomic_block:
+        if connection.in_atomic_block_mongo:
             # We're already in a transaction
             pass
         else:
             connection._start_transaction(
                 False, force_begin_transaction_with_broken_autocommit=True
             )
-            connection.in_atomic_block = True
+            connection.in_atomic_block_mongo = True
 
-        if connection.in_atomic_block:
-            connection.atomic_blocks.append(self)
+        if connection.in_atomic_block_mongo:
+            connection.atomic_blocks_mongo.append(self)
 
     def __exit__(self, exc_type, exc_value, traceback):
         connection = get_connection(self.using)
 
-        if connection.in_atomic_block:
-            connection.atomic_blocks.pop()
+        if connection.in_atomic_block_mongo:
+            connection.atomic_blocks_mongo.pop()
 
         # Prematurely unset this flag to allow using commit or rollback.
         connection._in_atomic_block = False
@@ -170,7 +97,7 @@ class Atomic(ContextDecorator):
                 # Wait until we exit the outermost block.
                 pass
 
-            elif exc_type is None and not connection.needs_rollback:
+            elif exc_type is None and not connection.needs_rollback_mongo:
                 if connection._in_atomic_block:
                     # Release savepoint if there is one
                     pass
@@ -189,10 +116,10 @@ class Atomic(ContextDecorator):
             else:
                 # This flag will be set to True again if there isn't a savepoint
                 # allowing to perform the rollback at this level.
-                connection.needs_rollback = False
-                if connection.in_atomic_block:
+                connection.needs_rollback_mongo = False
+                if connection.in_atomic_block_mongo:
                     # Mark for rollback
-                    connection.needs_rollback = True
+                    connection.needs_rollback_mongo = True
                 else:
                     # Roll back transaction
                     try:
@@ -203,7 +130,7 @@ class Atomic(ContextDecorator):
                         connection.close()
         finally:
             # Outermost block exit when autocommit was enabled.
-            if not connection.in_atomic_block:
+            if not connection.in_atomic_block_mongo:
                 if connection.closed_in_transaction:
                     connection.connection = None
                 # else:
@@ -213,7 +140,7 @@ class Atomic(ContextDecorator):
                 if connection.closed_in_transaction:
                     connection.connection = None
                 else:
-                    connection.in_atomic_block = False
+                    connection.in_atomic_block_mongo = False
 
 
 def atomic(using=None, durable=False):
@@ -223,19 +150,3 @@ def atomic(using=None, durable=False):
         return Atomic(DEFAULT_DB_ALIAS, durable)(using)
     # Decorator: @atomic(...) or context manager: with atomic(...): ...
     return Atomic(using, durable)
-
-
-def _non_atomic_requests(view, using):
-    try:
-        view._non_atomic_requests.add(using)
-    except AttributeError:
-        view._non_atomic_requests = {using}
-    return view
-
-
-def non_atomic_requests(using=None):
-    if callable(using):
-        return _non_atomic_requests(using, DEFAULT_DB_ALIAS)
-    if using is None:
-        using = DEFAULT_DB_ALIAS
-    return lambda view: _non_atomic_requests(view, using)
