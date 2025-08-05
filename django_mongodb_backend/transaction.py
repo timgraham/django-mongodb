@@ -23,16 +23,6 @@ def get_connection(using=None):
     return connections[using]
 
 
-def get_autocommit(using=None):
-    """Get the autocommit status of the connection."""
-    return get_connection(using).get_autocommit()
-
-
-def set_autocommit(autocommit, using=None):
-    """Set the autocommit status of the connection."""
-    return get_connection(using).set_autocommit(autocommit)
-
-
 def commit(using=None):
     """Commit a transaction."""
     get_connection(using).commit()
@@ -141,7 +131,7 @@ class Atomic(ContextDecorator):
             and not connection.atomic_blocks[-1]._from_testcase
         ):
             raise RuntimeError(
-                "A durable atomic block cannot be nested within another " "atomic block."
+                "A durable atomic block cannot be nested within another atomic block."
             )
         if not connection.in_atomic_block:
             # Reset state when entering an outermost atomic block.
@@ -158,7 +148,9 @@ class Atomic(ContextDecorator):
             # We're already in a transaction
             pass
         else:
-            connection.set_autocommit(False, force_begin_transaction_with_broken_autocommit=True)
+            connection._start_transaction(
+                False, force_begin_transaction_with_broken_autocommit=True
+            )
             connection.in_atomic_block = True
 
         if connection.in_atomic_block:
@@ -173,22 +165,22 @@ class Atomic(ContextDecorator):
         # Prematurely unset this flag to allow using commit or rollback.
         connection._in_atomic_block = False
         try:
-            if connection._closed_in_transaction:
+            if connection.closed_in_transaction:
                 # The database will perform a rollback by itself.
                 # Wait until we exit the outermost block.
                 pass
 
-            elif exc_type is None and not connection._needs_rollback:
+            elif exc_type is None and not connection.needs_rollback:
                 if connection._in_atomic_block:
                     # Release savepoint if there is one
                     pass
                 else:
                     # Commit transaction
                     try:
-                        connection._commit()
+                        connection._commit_transaction()
                     except DatabaseError:
                         try:
-                            connection._rollback()
+                            connection._rollback_transaction()
                         except Error:
                             # An error during rollback means that something
                             # went wrong with the connection. Drop it.
@@ -204,7 +196,7 @@ class Atomic(ContextDecorator):
                 else:
                     # Roll back transaction
                     try:
-                        connection.rollback()
+                        connection._rollback_transaction()
                     except Error:
                         # An error during rollback means that something
                         # went wrong with the connection. Drop it.
@@ -214,8 +206,8 @@ class Atomic(ContextDecorator):
             if not connection.in_atomic_block:
                 if connection.closed_in_transaction:
                     connection.connection = None
-                else:
-                    connection.set_autocommit(True)
+                # else:
+                #     connection.set_autocommit(True)
             # Outermost block exit when autocommit was disabled.
             elif not connection.commit_on_exit:
                 if connection.closed_in_transaction:

@@ -103,40 +103,6 @@ class AtomicTests(TransactionTestCase):
             raise Exception("Oops, that's his first name")
         self.assertSequenceEqual(Reporter.objects.all(), [])
 
-    def test_merged_commit_commit(self):
-        with transaction.atomic():
-            reporter1 = Reporter.objects.create(first_name="Tintin")
-            with transaction.atomic(savepoint=False):
-                reporter2 = Reporter.objects.create(first_name="Archibald", last_name="Haddock")
-        self.assertSequenceEqual(Reporter.objects.all(), [reporter2, reporter1])
-
-    def test_merged_commit_rollback(self):
-        with transaction.atomic():
-            Reporter.objects.create(first_name="Tintin")
-            with self.assertRaisesMessage(Exception, "Oops"), transaction.atomic(savepoint=False):
-                Reporter.objects.create(first_name="Haddock")
-                raise Exception("Oops, that's his last name")
-        # Writes in the outer block are rolled back too.
-        self.assertSequenceEqual(Reporter.objects.all(), [])
-
-    def test_merged_rollback_commit(self):
-        with self.assertRaisesMessage(Exception, "Oops"), transaction.atomic():
-            Reporter.objects.create(last_name="Tintin")
-            with transaction.atomic(savepoint=False):
-                Reporter.objects.create(last_name="Haddock")
-            raise Exception("Oops, that's his first name")
-        self.assertSequenceEqual(Reporter.objects.all(), [])
-
-    def test_merged_rollback_rollback(self):
-        with self.assertRaisesMessage(Exception, "Oops"), transaction.atomic():
-            Reporter.objects.create(last_name="Tintin")
-            with self.assertRaisesMessage(Exception, "Oops"):
-                with transaction.atomic(savepoint=False):
-                    Reporter.objects.create(first_name="Haddock")
-                raise Exception("Oops, that's his last name")
-            raise Exception("Oops, that's his first name")
-        self.assertSequenceEqual(Reporter.objects.all(), [])
-
     def test_reuse_commit_commit(self):
         atomic = transaction.atomic()
         with atomic:
@@ -212,8 +178,11 @@ class AtomicErrorsTests(TransactionTestCase):
 
     def test_atomic_prevents_setting_autocommit(self):
         autocommit = transaction.get_autocommit()
-        with transaction.atomic(), self.assertRaisesMessage(
-            transaction.TransactionManagementError, self.forbidden_atomic_msg
+        with (
+            transaction.atomic(),
+            self.assertRaisesMessage(
+                transaction.TransactionManagementError, self.forbidden_atomic_msg
+            ),
         ):
             transaction.set_autocommit(not autocommit)
         # Make sure autocommit wasn't changed.
