@@ -1,10 +1,6 @@
 from contextlib import ContextDecorator
 
-from django.db import (
-    DEFAULT_DB_ALIAS,
-    DatabaseError,
-    Error,
-)
+from django.db import DEFAULT_DB_ALIAS, DatabaseError, Error
 from django.db.transaction import get_connection
 
 
@@ -14,11 +10,6 @@ def on_commit(func, using=None, robust=False):
     If the current transaction is rolled back, `func` will not be called.
     """
     get_connection(using).on_commit(func, robust)
-
-
-#################################
-# Decorators / context managers #
-#################################
 
 
 class Atomic(ContextDecorator):
@@ -44,14 +35,11 @@ class Atomic(ContextDecorator):
     raised if it's nested within another atomic block. This guarantees
     that database changes in a durable block are committed to the database when
     the block exits without error.
-
-    This is a private API.
     """
 
     def __init__(self, using, durable):
         self.using = using
         self.durable = durable
-        self._from_testcase = False
 
     def __enter__(self):
         connection = get_connection(self.using)
@@ -75,9 +63,7 @@ class Atomic(ContextDecorator):
             # We're already in a transaction. Increment the number of nested atomics.
             connection.nested_atomics += 1
         else:
-            connection._start_transaction(
-                False, force_begin_transaction_with_broken_autocommit=True
-            )
+            connection._start_transaction()
             connection.in_atomic_block_mongo = True
 
         if connection.in_atomic_block_mongo:

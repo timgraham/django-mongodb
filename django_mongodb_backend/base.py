@@ -282,14 +282,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         return tuple(self.connection.server_info()["versionArray"])
 
     @requires_transaction_support
-    def _start_transaction(self, autocommit, force_begin_transaction_with_broken_autocommit=False):
-        # Besides @transaction.atomic() (which uses
-        # _start_transaction_under_autocommit(), disabling autocommit is
-        # another way to start a transaction.
-        #        if not autocommit:
-        #        self._start_transaction()
-        #   def _start_transaction(self):
-        # Private API, specific to this backend.
+    def _start_transaction(self):
         if self.session is None:
             self.session = self.connection.start_session()
             with debug_transaction(self, "session.start_transaction()"):

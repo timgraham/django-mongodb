@@ -84,7 +84,8 @@ Query execution uses Django and MongoDB's default behavior of autocommit mode.
 Each query is immediately committed to the database.
 
 Django's :doc:`transaction management APIs <django:topics/db/transactions>`
-are not supported.
+are not supported. Instead, this package provides its own :doc:`transaction APIs
+<topics/transactions>`.
 
 Database introspection
 ======================
