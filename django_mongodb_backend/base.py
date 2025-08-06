@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import os
 
 from django.core.exceptions import ImproperlyConfigured
@@ -44,6 +45,9 @@ def requires_transaction_support(func):
         func(self, *args, **kwargs)
 
     return wrapper
+
+
+logger = logging.getLogger("django.db.backends.base")
 
 
 class DatabaseWrapper(BaseDatabaseWrapper):
@@ -319,3 +323,24 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         # Private API, specific to this backend.
         self.session.end_session()
         self.session = None
+
+    def on_commit(self, func, robust=False):
+        if not callable(func):
+            raise TypeError("on_commit()'s callback must be a callable.")
+        if self.in_atomic_block_mongo:
+            # Transaction in progress; save for execution on commit.
+            self.run_on_commit.append((set(self.savepoint_ids), func, robust))
+        else:
+            # No transaction in progress and in autocommit mode; execute
+            # immediately.
+            if robust:
+                try:
+                    func()
+                except Exception as e:
+                    logger.exception(
+                        "Error calling %s in on_commit() (%s).",
+                        func.__qualname__,
+                        e,
+                    )
+            else:
+                func()

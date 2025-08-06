@@ -115,7 +115,8 @@ class Atomic(ContextDecorator):
         finally:
             # Outermost block exit when autocommit was enabled.
             if not connection.in_atomic_block_mongo:
-                pass
+                if connection.run_commit_hooks_on_set_autocommit_on:
+                    connection.run_and_clear_commit_hooks()
             # connection.set_autocommit(True)
             # Outermost block exit when autocommit was disabled.
             elif not connection.commit_on_exit:
