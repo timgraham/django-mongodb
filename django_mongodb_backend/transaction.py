@@ -68,12 +68,12 @@ class Atomic(ContextDecorator):
             # Pretend we're already in an atomic block to bypass the code
             # that disables autocommit to enter a transaction, and make a
             # note to deal with this case in __exit__.
-            connection.in_atomic_block_mongo = True
-            connection.commit_on_exit = False
+            # connection.in_atomic_block_mongo = True
+            # connection.commit_on_exit = False
 
         if connection.in_atomic_block_mongo:
-            # We're already in a transaction
-            pass
+            # We're already in a transaction. Increment the number of nested atomics.
+            connection.nested_atomics += 1
         else:
             connection._start_transaction(
                 False, force_begin_transaction_with_broken_autocommit=True
@@ -89,25 +89,23 @@ class Atomic(ContextDecorator):
         if connection.in_atomic_block_mongo:
             connection.atomic_blocks_mongo.pop()
 
-        # Prematurely unset this flag to allow using commit or rollback.
-        connection._in_atomic_block = False
+        if connection.nested_atomics:
+            connection.nested_atomics -= 1
+        else:
+            # Prematurely unset this flag to allow using commit or rollback.
+            connection.in_atomic_block_mongo = False
         try:
-            if connection.closed_in_transaction:
-                # The database will perform a rollback by itself.
-                # Wait until we exit the outermost block.
-                pass
-
-            elif exc_type is None and not connection.needs_rollback_mongo:
-                if connection._in_atomic_block:
+            if exc_type is None and not connection.needs_rollback_mongo:
+                if connection.in_atomic_block_mongo:
                     # Release savepoint if there is one
                     pass
                 else:
                     # Commit transaction
                     try:
-                        connection._commit_transaction()
+                        connection.commit_mongo()
                     except DatabaseError:
                         try:
-                            connection._rollback_transaction()
+                            connection.rollback_mongo()
                         except Error:
                             # An error during rollback means that something
                             # went wrong with the connection. Drop it.
@@ -123,7 +121,7 @@ class Atomic(ContextDecorator):
                 else:
                     # Roll back transaction
                     try:
-                        connection._rollback_transaction()
+                        connection.rollback_mongo()
                     except Error:
                         # An error during rollback means that something
                         # went wrong with the connection. Drop it.
@@ -131,16 +129,11 @@ class Atomic(ContextDecorator):
         finally:
             # Outermost block exit when autocommit was enabled.
             if not connection.in_atomic_block_mongo:
-                if connection.closed_in_transaction:
-                    connection.connection = None
-                # else:
-                #     connection.set_autocommit(True)
+                pass
+            # connection.set_autocommit(True)
             # Outermost block exit when autocommit was disabled.
             elif not connection.commit_on_exit:
-                if connection.closed_in_transaction:
-                    connection.connection = None
-                else:
-                    connection.in_atomic_block_mongo = False
+                connection.in_atomic_block_mongo = False
 
 
 def atomic(using=None, durable=False):

@@ -161,15 +161,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.session = None
 
         # Transaction related attributes.
-        # Tracks if the connection is in autocommit mode. Per PEP 249, by
-        # default, it isn't.
-        self.autocommit_mongo = False
         # Tracks if the connection is in a transaction managed by 'atomic'.
         self.in_atomic_block_mongo = False
-        # Increment to generate unique savepoint ids.
-        self.savepoint_state = 0
-        # List of savepoints created by 'atomic'.
-        self.savepoint_ids = []
+        # Current number of nested 'atomic' calls.
+        self.nested_atomics = 0
         # Stack of active 'atomic' blocks.
         self.atomic_blocks_mongo = []
         # Tracks if the outermost 'atomic' block should commit on exit,
@@ -277,6 +272,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 "execute queries until the end of the 'atomic' block."
             ) from self.rollback_exc
 
+    def validate_no_atomic_block(self):
+        """Raise an error if an atomic block is active."""
+        if self.in_atomic_block_mongo:
+            raise TransactionManagementError("This is forbidden when an 'atomic' block is active.")
+
     def get_database_version(self):
         """Return a tuple of the database's version."""
         return tuple(self.connection.server_info()["versionArray"])
@@ -296,7 +296,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 self.session.start_transaction()
 
     @requires_transaction_support
-    def _commit_transaction(self):
+    def commit_mongo(self):
         self.validate_thread_sharing()
         self.validate_no_atomic_block()
         if self.session:
@@ -309,7 +309,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     @async_unsafe
     @requires_transaction_support
-    def _rollback_transaction(self):
+    def rollback_mongo(self):
         """Roll back a MongoDB transaction and reset the dirty flag."""
         self.validate_thread_sharing()
         self.validate_no_atomic_block()
@@ -319,7 +319,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self._end_session()
         # A successful rollback means that the database connection works.
         self.errors_occurred = False
-        self.needs_rollback = False
+        self.needs_rollback_mongo = False
         self.run_on_commit = []
 
     def _end_session(self):
