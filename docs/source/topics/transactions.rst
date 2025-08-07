@@ -23,7 +23,7 @@ autocommit mode. Each query is immediately committed to the database.
 Controlling transactions
 ========================
 
-.. function:: atomic(using=None, durable=False)
+.. function:: atomic(using=None)
 
     Atomicity is the defining property of database transactions. ``atomic`` allows
     creating a block of code within which the atomicity on the database is guaranteed.

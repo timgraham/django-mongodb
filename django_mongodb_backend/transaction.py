@@ -30,24 +30,13 @@ class Atomic(ContextDecorator):
     `with oa:` multiple times.
 
     Since database connections are thread-local, this is thread-safe.
-
-    An atomic block can be tagged as durable. In this case, a RuntimeError is
-    raised if it's nested within another atomic block. This guarantees
-    that database changes in a durable block are committed to the database when
-    the block exits without error.
     """
 
-    def __init__(self, using, durable):
+    def __init__(self, using):
         self.using = using
-        self.durable = durable
 
     def __enter__(self):
         connection = get_connection(self.using)
-
-        if self.durable and connection.atomic_blocks_mongo:
-            raise RuntimeError(
-                "A durable atomic block cannot be nested within another atomic block."
-            )
         if not connection.in_atomic_block_mongo:
             # Reset state when entering an outermost atomic block.
             connection.commit_on_exit_mongo = True
@@ -123,10 +112,10 @@ class Atomic(ContextDecorator):
                 connection.in_atomic_block_mongo = False
 
 
-def atomic(using=None, durable=False):
+def atomic(using=None):
     # Bare decorator: @atomic -- although the first argument is called
     # `using`, it's actually the function being decorated.
     if callable(using):
-        return Atomic(DEFAULT_DB_ALIAS, durable)(using)
+        return Atomic(DEFAULT_DB_ALIAS)(using)
     # Decorator: @atomic(...) or context manager: with atomic(...): ...
-    return Atomic(using, durable)
+    return Atomic(using)
