@@ -285,14 +285,12 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """Return a tuple of the database's version."""
         return tuple(self.connection.server_info()["versionArray"])
 
-    @requires_transaction_support
     def _start_transaction(self):
         if self.session is None:
             self.session = self.connection.start_session()
             with debug_transaction(self, "session.start_transaction()"):
                 self.session.start_transaction()
 
-    @requires_transaction_support
     def commit_mongo(self):
         self.validate_thread_sharing()
         self.validate_no_atomic_block()
@@ -305,7 +303,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.run_commit_hooks_on_set_autocommit_on = True
 
     @async_unsafe
-    @requires_transaction_support
     def rollback_mongo(self):
         """Roll back a MongoDB transaction and reset the dirty flag."""
         self.validate_thread_sharing()
@@ -331,8 +328,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             # Transaction in progress; save for execution on commit.
             self.run_on_commit.append((set(self.savepoint_ids), func, robust))
         else:
-            # No transaction in progress and in autocommit mode; execute
-            # immediately.
+            # No transaction in progress; execute immediately.
             if robust:
                 try:
                     func()
