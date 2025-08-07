@@ -39,14 +39,7 @@ class Atomic(ContextDecorator):
         connection = get_connection(self.using)
         if not connection.in_atomic_block_mongo:
             # Reset state when entering an outermost atomic block.
-            connection.commit_on_exit_mongo = True
             connection.needs_rollback_mongo = False
-            #            if not connection.get_autocommit():
-            # Pretend we're already in an atomic block to bypass the code
-            # that disables autocommit to enter a transaction, and make a
-            # note to deal with this case in __exit__.
-            # connection.in_atomic_block_mongo = True
-            # connection.commit_on_exit = False
 
         if connection.in_atomic_block_mongo:
             # We're already in a transaction. Increment the number of nested atomics.
@@ -102,14 +95,12 @@ class Atomic(ContextDecorator):
                         # went wrong with the connection. Drop it.
                         connection.close()
         finally:
-            # Outermost block exit when autocommit was enabled.
-            if not connection.in_atomic_block_mongo:
-                if connection.run_commit_hooks_on_set_autocommit_on:
-                    connection.run_and_clear_commit_hooks()
-            # connection.set_autocommit(True)
-            # Outermost block exit when autocommit was disabled.
-            elif not connection.commit_on_exit:
-                connection.in_atomic_block_mongo = False
+            # Outermost block exit
+            if (
+                not connection.in_atomic_block_mongo
+                and connection.run_commit_hooks_on_set_autocommit_on
+            ):
+                connection.run_and_clear_commit_hooks()
 
 
 def atomic(using=None):

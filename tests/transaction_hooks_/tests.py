@@ -12,12 +12,7 @@ class ForcedError(Exception):
 
 @skipUnlessDBFeature("_supports_transactions")
 class TestConnectionOnCommit(TransactionTestCase):
-    """
-    Tests for transaction.on_commit().
-
-    Creation/checking of database objects in parallel with callback tracking is
-    to verify that the behavior of the two match in all tested cases.
-    """
+    """Largely copied from Django's test/transaction_hooks."""
 
     available_apps = ["transaction_hooks_"]
 

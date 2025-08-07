@@ -1,6 +1,5 @@
-from unittest import expectedFailure
-
-from django.test import TransactionTestCase, skipUnlessDBFeature
+from django.db import DatabaseError
+from django.test import TransactionTestCase, skipIfDBFeature, skipUnlessDBFeature
 
 from django_mongodb_backend import transaction
 
@@ -9,16 +8,7 @@ from .models import Reporter
 
 @skipUnlessDBFeature("_supports_transactions")
 class AtomicTests(TransactionTestCase):
-    """
-    Tests for the atomic decorator and context manager.
-
-    The tests make assertions on internal attributes because there isn't a
-    robust way to ask the database for its current transaction state.
-
-    Since the decorator syntax is converted into a context manager (see the
-    implementation), there are only a few basic tests with the decorator
-    syntax and the bulk of the tests use the context manager syntax.
-    """
+    """Largely copied from Django's test/transactions."""
 
     available_apps = ["transactions_"]
 
@@ -76,15 +66,6 @@ class AtomicTests(TransactionTestCase):
                 reporter2 = Reporter.objects.create(first_name="Archibald", last_name="Haddock")
         self.assertSequenceEqual(Reporter.objects.all(), [reporter2, reporter1])
 
-    @expectedFailure
-    def test_nested_commit_rollback(self):
-        with transaction.atomic():
-            reporter = Reporter.objects.create(first_name="Tintin")
-            with self.assertRaisesMessage(Exception, "Oops"), transaction.atomic():
-                Reporter.objects.create(first_name="Haddock")
-                raise Exception("Oops, that's his last name")
-        self.assertSequenceEqual(Reporter.objects.all(), [reporter])
-
     def test_nested_rollback_commit(self):
         with self.assertRaisesMessage(Exception, "Oops"), transaction.atomic():
             Reporter.objects.create(last_name="Tintin")
@@ -111,16 +92,6 @@ class AtomicTests(TransactionTestCase):
                 reporter2 = Reporter.objects.create(first_name="Archibald", last_name="Haddock")
         self.assertSequenceEqual(Reporter.objects.all(), [reporter2, reporter1])
 
-    @expectedFailure
-    def test_reuse_commit_rollback(self):
-        atomic = transaction.atomic()
-        with atomic:
-            reporter = Reporter.objects.create(first_name="Tintin")
-            with self.assertRaisesMessage(Exception, "Oops"), atomic:
-                Reporter.objects.create(first_name="Haddock")
-                raise Exception("Oops, that's his last name")
-        self.assertSequenceEqual(Reporter.objects.all(), [reporter])
-
     def test_reuse_rollback_commit(self):
         atomic = transaction.atomic()
         with self.assertRaisesMessage(Exception, "Oops"), atomic:
@@ -141,16 +112,6 @@ class AtomicTests(TransactionTestCase):
             raise Exception("Oops, that's his first name")
         self.assertSequenceEqual(Reporter.objects.all(), [])
 
-    # class AtomicInsideTransactionTests(AtomicTests):
-    #    """All basic tests for atomic should also pass within an existing transaction."""
-
-    #    def setUp(self):
-    #        self.atomic = transaction.atomic()
-    #        self.atomic.__enter__()
-
-    #    def tearDown(self):
-    #        self.atomic.__exit__(*sys.exc_info())
-
     def test_wrap_callable_instance(self):
         """Atomic can wrap callable instances."""
 
@@ -160,3 +121,14 @@ class AtomicTests(TransactionTestCase):
 
         # Must not raise an exception
         transaction.atomic(Callable())
+
+
+@skipIfDBFeature("_supports_transactions")
+class AtomicNotSupportedTests(TransactionTestCase):
+    available_apps = ["transactions_"]
+
+    def test_not_supported(self):
+        # MongoDB error:
+        # "Transaction numbers are only allowed on a replica set member or mongos"
+        with self.assertRaises(DatabaseError), transaction.atomic():
+            Reporter.objects.create(first_name="Haddock")

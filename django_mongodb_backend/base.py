@@ -36,17 +36,6 @@ class Cursor:
         pass
 
 
-def requires_transaction_support(func):
-    """Make a method a no-op if transactions aren't supported."""
-
-    def wrapper(self, *args, **kwargs):
-        if not self.features._supports_transactions:
-            return
-        func(self, *args, **kwargs)
-
-    return wrapper
-
-
 logger = logging.getLogger("django.db.backends.base")
 
 
@@ -171,9 +160,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.nested_atomics = 0
         # Stack of active 'atomic' blocks.
         self.atomic_blocks_mongo = []
-        # Tracks if the outermost 'atomic' block should commit on exit,
-        # ie. if autocommit was active on entry.
-        self.commit_on_exit_mongo = True
         # Tracks if the transaction should be rolled back to the next
         # available savepoint because of an exception in an inner block.
         self.needs_rollback_mongo = False
@@ -268,7 +254,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     def cursor(self):
         return Cursor()
 
-    @requires_transaction_support
     def validate_no_broken_transaction(self):
         if self.needs_rollback_mongo:
             raise TransactionManagementError(
