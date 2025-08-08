@@ -6,7 +6,6 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import DEFAULT_DB_ALIAS
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.backends.utils import debug_transaction
-from django.db.transaction import TransactionManagementError
 from django.utils.asyncio import async_unsafe
 from django.utils.functional import cached_property
 from pymongo.collection import Collection
@@ -247,11 +246,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     def cursor(self):
         return Cursor()
 
-    def validate_no_atomic_block(self):
-        """Raise an error if an atomic block is active."""
-        if self.in_atomic_block_mongo:
-            raise TransactionManagementError("This is forbidden when an 'atomic' block is active.")
-
     def get_database_version(self):
         """Return a tuple of the database's version."""
         return tuple(self.connection.server_info()["versionArray"])
@@ -263,28 +257,19 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 self.session.start_transaction()
 
     def commit_mongo(self):
-        self.validate_thread_sharing()
-        self.validate_no_atomic_block()
         if self.session:
             with debug_transaction(self, "session.commit_transaction()"):
                 self.session.commit_transaction()
             self._end_session()
-        # A successful commit means that the database connection works.
-        self.errors_occurred = False
         self.run_commit_hooks_on_set_autocommit_on = True
 
     @async_unsafe
     def rollback_mongo(self):
         """Roll back a MongoDB transaction and reset the dirty flag."""
-        self.validate_thread_sharing()
-        self.validate_no_atomic_block()
         if self.session:
             with debug_transaction(self, "session.abort_transaction()"):
                 self.session.abort_transaction()
             self._end_session()
-        # A successful rollback means that the database connection works.
-        self.errors_occurred = False
-        self.needs_rollback_mongo = False
         self.run_on_commit = []
 
     def _end_session(self):
