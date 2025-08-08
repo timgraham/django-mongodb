@@ -152,7 +152,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         super().__init__(settings_dict, alias=alias)
         self.session = None
         # Tracks if the connection is in a transaction managed by
-        # django_mongodb_backend.transaction.atomic.
+        # django_mongodb_backend.transaction.atomic. `in_atomic_block` isn't
+        # used in case Django's atomic() (used internally in Django) is called
+        # within this package's atomic().
         self.in_atomic_block_mongo = False
         # Current number of nested 'atomic' calls.
         self.nested_atomics = 0
@@ -250,22 +252,24 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """Return a tuple of the database's version."""
         return tuple(self.connection.server_info()["versionArray"])
 
-    def _start_transaction(self):
+    ## Transaction API for django_mongodb_backend.transaction.atomic()
+    @async_unsafe
+    def start_transaction_mongo(self):
         if self.session is None:
             self.session = self.connection.start_session()
             with debug_transaction(self, "session.start_transaction()"):
                 self.session.start_transaction()
 
+    @async_unsafe
     def commit_mongo(self):
         if self.session:
             with debug_transaction(self, "session.commit_transaction()"):
                 self.session.commit_transaction()
             self._end_session()
-        self.run_commit_hooks_on_set_autocommit_on = True
+        self.run_and_clear_commit_hooks()
 
     @async_unsafe
     def rollback_mongo(self):
-        """Roll back a MongoDB transaction and reset the dirty flag."""
         if self.session:
             with debug_transaction(self, "session.abort_transaction()"):
                 self.session.abort_transaction()
@@ -273,16 +277,21 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.run_on_commit = []
 
     def _end_session(self):
-        # Private API, specific to this backend.
         self.session.end_session()
         self.session = None
 
     def on_commit(self, func, robust=False):
+        """
+        Copied from BaseDatabaseWrapper.on_commit() except that it checks
+        in_atomic_block_mongo instead of in_atomic_block.
+        """
         if not callable(func):
             raise TypeError("on_commit()'s callback must be a callable.")
         if self.in_atomic_block_mongo:
             # Transaction in progress; save for execution on commit.
-            self.run_on_commit.append((set(self.savepoint_ids), func, robust))
+            # The first item in the tuple (an empty list) is normally the
+            # savepoint IDs, which isn't applicable on MongoDB.
+            self.run_on_commit.append(([], func, robust))
         else:
             # No transaction in progress; execute immediately.
             if robust:
