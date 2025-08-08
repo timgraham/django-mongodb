@@ -1,6 +1,6 @@
 from contextlib import ContextDecorator
 
-from django.db import DEFAULT_DB_ALIAS, DatabaseError, Error
+from django.db import DEFAULT_DB_ALIAS, DatabaseError
 from django.db.transaction import get_connection
 
 
@@ -30,6 +30,8 @@ class Atomic(ContextDecorator):
     `with oa:` multiple times.
 
     Since database connections are thread-local, this is thread-safe.
+
+    Simplified from django.db.transaction.
     """
 
     def __init__(self, using):
@@ -37,75 +39,52 @@ class Atomic(ContextDecorator):
 
     def __enter__(self):
         connection = get_connection(self.using)
-        if not connection.in_atomic_block_mongo:
-            # Reset state when entering an outermost atomic block.
-            connection.needs_rollback_mongo = False
-
         if connection.in_atomic_block_mongo:
-            # We're already in a transaction. Increment the number of nested atomics.
+            # If we're already in an atomic(), track the number of nested calls.
             connection.nested_atomics += 1
         else:
+            # Start a transaction for the outermost atomic().
             connection._start_transaction()
             connection.in_atomic_block_mongo = True
 
-        if connection.in_atomic_block_mongo:
-            connection.atomic_blocks_mongo.append(self)
-
     def __exit__(self, exc_type, exc_value, traceback):
         connection = get_connection(self.using)
-
-        if connection.in_atomic_block_mongo:
-            connection.atomic_blocks_mongo.pop()
-
         if connection.nested_atomics:
             connection.nested_atomics -= 1
         else:
-            # Prematurely unset this flag to allow using commit or rollback.
             connection.in_atomic_block_mongo = False
         try:
-            if exc_type is None and not connection.needs_rollback_mongo:
+            if exc_type is None:
+                # atomic() exited without an error.
                 if connection.in_atomic_block_mongo:
-                    # Release savepoint if there is one
+                    # Do nothing for an inner atomic().
                     pass
                 else:
-                    # Commit transaction
+                    # Commit transaction.
                     try:
                         connection.commit_mongo()
                     except DatabaseError:
-                        try:
-                            connection.rollback_mongo()
-                        except Error:
-                            # An error during rollback means that something
-                            # went wrong with the connection. Drop it.
-                            connection.close()
-                        raise
-            else:
-                # This flag will be set to True again if there isn't a savepoint
-                # allowing to perform the rollback at this level.
-                connection.needs_rollback_mongo = False
-                if connection.in_atomic_block_mongo:
-                    # Mark for rollback
-                    connection.needs_rollback_mongo = True
-                else:
-                    # Roll back transaction
-                    try:
                         connection.rollback_mongo()
-                    except Error:
-                        # An error during rollback means that something
-                        # went wrong with the connection. Drop it.
-                        connection.close()
+            else:
+                # atomic() exited with an error.
+                if connection.in_atomic_block_mongo:
+                    # Do nothing for an inner atomic().
+                    pass
+                else:
+                    # Rollback transaction.
+                    connection.rollback_mongo()
         finally:
-            # Outermost block exit
             if (
                 not connection.in_atomic_block_mongo
                 and connection.run_commit_hooks_on_set_autocommit_on
             ):
+                # Run on_commit() callbacks after outermost atomic()
                 connection.run_and_clear_commit_hooks()
 
 
 def atomic(using=None):
-    # Bare decorator: @atomic -- although the first argument is called
-    # `using`, it's actually the function being decorated.
+    # Bare decorator: @atomic -- although the first argument is called `using`, it's
+    # actually the function being decorated.
     if callable(using):
         return Atomic(DEFAULT_DB_ALIAS)(using)
     # Decorator: @atomic(...) or context manager: with atomic(...): ...

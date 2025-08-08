@@ -152,18 +152,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     def __init__(self, settings_dict, alias=DEFAULT_DB_ALIAS):
         super().__init__(settings_dict, alias=alias)
         self.session = None
-
-        # Transaction related attributes.
-        # Tracks if the connection is in a transaction managed by 'atomic'.
+        # Tracks if the connection is in a transaction managed by
+        # django_mongodb_backend.transaction.atomic.
         self.in_atomic_block_mongo = False
         # Current number of nested 'atomic' calls.
         self.nested_atomics = 0
-        # Stack of active 'atomic' blocks.
-        self.atomic_blocks_mongo = []
-        # Tracks if the transaction should be rolled back to the next
-        # available savepoint because of an exception in an inner block.
-        self.needs_rollback_mongo = False
-        self.rollback_exc_mongo = None
 
     def get_collection(self, name, **kwargs):
         collection = Collection(self.database, name, **kwargs)
@@ -253,13 +246,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     @async_unsafe
     def cursor(self):
         return Cursor()
-
-    def validate_no_broken_transaction(self):
-        if self.needs_rollback_mongo:
-            raise TransactionManagementError(
-                "An error occurred in the current transaction. You can't "
-                "execute queries until the end of the 'atomic' block."
-            ) from self.rollback_exc
 
     def validate_no_atomic_block(self):
         """Raise an error if an atomic block is active."""

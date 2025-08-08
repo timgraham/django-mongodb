@@ -119,8 +119,7 @@ class AtomicTests(TransactionTestCase):
             def __call__(self):
                 pass
 
-        # Must not raise an exception
-        transaction.atomic(Callable())
+        transaction.atomic(Callable())  # Must not raise an exception
 
 
 @skipIfDBFeature("_supports_transactions")

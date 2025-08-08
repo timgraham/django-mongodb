@@ -68,10 +68,7 @@ Controlling transactions
         This is mostly a concern for :exc:`~django.db.DatabaseError` and its subclasses
         such as :exc:`~django.db.IntegrityError`. After such an error, the transaction
         is broken and Django will perform a rollback at the end of the ``atomic``
-        block. If you attempt to run database queries before the rollback happens,
-        Django will raise a :class:`~django.db.transaction.TransactionManagementError`.
-        You may also encounter this behavior when an ORM-related signal handler raises
-        an exception.
+        block.
 
     .. admonition:: You may need to manually revert app state when rolling back a transaction.
 
