@@ -1,4 +1,5 @@
 from django.db import models
+from pymongo.encryption import Algorithm
 
 from django_mongodb_backend.fields import ArrayField, EmbeddedModelArrayField, EmbeddedModelField
 from django_mongodb_backend.fields.objectid import ObjectIdField
@@ -30,6 +31,13 @@ class EncryptedFieldMixin:
             )
 
         return name, path, args, kwargs
+
+    def get_db_prep_value(self, value, connection, prepared=False):
+        value = super().get_db_prep_value(value, connection, prepared)
+        key_alt_name = f"{self.model._meta.db_table}.{self.column}"
+        return connection.client_encryption.encrypt(
+            value, Algorithm.INDEXED, key_alt_name=key_alt_name, query_type="equality"
+        )
 
 
 class NoQueriesMixin:
