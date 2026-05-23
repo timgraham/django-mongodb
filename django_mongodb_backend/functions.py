@@ -27,12 +27,14 @@ from django.db.models.functions.datetime import (
 )
 from django.db.models.functions.math import Ceil, Cot, Degrees, Log, Power, Radians, Random, Round
 from django.db.models.functions.text import (
+    Chr,
     Concat,
     ConcatPair,
     Left,
     Length,
     Lower,
     LTrim,
+    Ord,
     Replace,
     RTrim,
     StrIndex,
@@ -80,6 +82,28 @@ def cast(self, compiler, connection):
     if decimal_places := getattr(self.output_field, "decimal_places", None):
         lhs_mql = {"$trunc": [lhs_mql, decimal_places]}
     return lhs_mql
+
+
+def chr_(self, compiler, connection):
+    lhs_mql = process_lhs(self, compiler, connection, as_expr=True)
+    return {
+        "$function": {
+            "body": "function(cp) { return String.fromCodePoint(cp); }",
+            "args": [lhs_mql],
+            "lang": "js",
+        }
+    }
+
+
+def ord_(self, compiler, connection):
+    lhs_mql = process_lhs(self, compiler, connection, as_expr=True)
+    return {
+        "$function": {
+            "body": "function(s) { return s.codePointAt(0); }",
+            "args": [lhs_mql],
+            "lang": "js",
+        }
+    }
 
 
 def concat(self, compiler, connection):
@@ -292,6 +316,8 @@ def trunc_time(self, compiler, connection):
 
 def register_functions():
     Cast.as_mql_expr = cast
+    Chr.as_mql_expr = chr_
+    Ord.as_mql_expr = ord_
     Concat.as_mql_expr = concat
     ConcatPair.as_mql_expr = concat_pair
     Cot.as_mql_expr = cot

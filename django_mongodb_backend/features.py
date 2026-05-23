@@ -259,9 +259,7 @@ class DatabaseFeatures(GISFeatures, BaseDatabaseFeatures):
         },
         "MongoDB does not support this database function.": {
             "db_functions.math.test_sign.SignTests",
-            "db_functions.text.test_chr.ChrTests",
             "db_functions.text.test_md5.MD5Tests",
-            "db_functions.text.test_ord.OrdTests",
             "db_functions.text.test_pad.PadTests",
             "db_functions.text.test_repeat.RepeatTests",
             "db_functions.text.test_reverse.ReverseTests",
