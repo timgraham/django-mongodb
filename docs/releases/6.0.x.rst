@@ -12,6 +12,9 @@ New features
 
 - Added support for Django's warning when performing import-time queries.
 
+- Added support for the :class:`~django.db.models.functions.ExtractQuarter`
+  database function.
+
 Bug fixes
 ---------
 
